@@ -1,9 +1,12 @@
 from django.contrib import admin
 from import_export.admin import ExportMixin
 from import_export import resources
-from .models import Colaborador, Sistema, Email, Filial, HistoricoEmail
+from .models import (
+    Filial, Colaborador, Sistema, Credencial, Email, HistoricoEmail, Maquina, Equipamento, Inventario
+)
 from import_export.formats.base_formats import XLSX
 from django import forms
+
 # Customização do Admin
 admin.site.site_header = "Gestão de TI"
 admin.site.site_title = "Administração - Gestão de TI"
@@ -11,39 +14,24 @@ admin.site.index_title = "Painel de Controle"
 
 class SenhaInputForm(forms.ModelForm):
     class Meta:
-        model: Email
+        model = Email
         fields = '__all__'
         widgets = {
             'senha': forms.PasswordInput(render_value=True)
         }
 
-class CustomAdminSite(admin.AdminSite):
-    site_header = "Gestão de TI"
-    site_title = "Administração - Gestão de TI"
-    index_title = "Painel de Controle"
-
-    def get_urls(self):
-        from django.conf.urls.static import static
-        from django.conf import settings
-        urls = super().get_urls()
-        return urls + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    
-admin.site = CustomAdminSite()
-
 # Mixin para bloquear exclusão por usuários normais
 class SomenteSuperuserDeleteMixin(admin.ModelAdmin):
-    """Mixin para impedir exclusão de registros por usuários normais."""
-    
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser  # Apenas superusuário pode excluir
+        return request.user.is_superuser
 
     def get_actions(self, request):
         actions = super().get_actions(request)
         if not request.user.is_superuser:
             if 'delete_selected' in actions:
-                del actions['delete_selected']  # Remove ação de exclusão em massa
+                del actions['delete_selected']
         return actions
-    
+
 # Recursos para exportação
 class FilialResource(resources.ModelResource):
     class Meta:
@@ -57,6 +45,10 @@ class SistemaResource(resources.ModelResource):
     class Meta:
         model = Sistema
 
+class CredencialResource(resources.ModelResource):
+    class Meta:
+        model = Credencial
+
 class EmailResource(resources.ModelResource):
     class Meta:
         model = Email
@@ -65,7 +57,18 @@ class HistoricoEmailResource(resources.ModelResource):
     class Meta:
         model = HistoricoEmail
 
-# Admin personalizado com exportação
+class MaquinaResource(resources.ModelResource):
+    class Meta:
+        model = Maquina
+
+class EquipamentoResource(resources.ModelResource):
+    class Meta:
+        model = Equipamento
+
+class InventarioResource(resources.ModelResource):
+    class Meta:
+        model = Inventario
+
 @admin.register(Filial)
 class FilialAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = FilialResource
@@ -77,11 +80,6 @@ class ColaboradorAdmin(ExportMixin, SomenteSuperuserDeleteMixin, admin.ModelAdmi
     resource_class = ColaboradorResource
     list_display = ('nome', 'email_pessoal', 'filial', 'ativo')
     list_filter = ('ativo', 'filial')
-    actions = ['desativar_colaboradores']
-
-    @admin.action(description="Desativar colaboradores selecionados")
-    def desativar_colaboradores(self, request, queryset):
-        queryset.update(ativo=False)
 
 @admin.register(Sistema)
 class SistemaAdmin(ExportMixin, SomenteSuperuserDeleteMixin, admin.ModelAdmin):
@@ -89,44 +87,52 @@ class SistemaAdmin(ExportMixin, SomenteSuperuserDeleteMixin, admin.ModelAdmin):
     list_display = ('nome', 'tipo_vencimento', 'ativo', 'filial')
     list_filter = ('ativo', 'tipo_vencimento', 'filial')
     search_fields = ('nome',)
-    actions = ['desativar_sistemas']
 
-    @admin.action(description="Desativar sistemas selecionados")
-    def desativar_sistemas(self, request, queryset):
-        queryset.update(ativo=False)
-
-# Inline para histórico de e-mails
-class HistoricoEmailInline(admin.TabularInline):  
-    model = HistoricoEmail  
-    extra = 0  # Não exibir linhas vazias  
+@admin.register(Credencial)
+class CredencialAdmin(ExportMixin, SomenteSuperuserDeleteMixin, admin.ModelAdmin):
+    resource_class = CredencialResource
+    list_display = ('nome', 'sistema', 'login', 'ativo')
+    list_filter = ('ativo', 'sistema')
+    search_fields = ('nome', 'login')
 
 @admin.register(Email)
 class EmailAdmin(ExportMixin, SomenteSuperuserDeleteMixin, admin.ModelAdmin):
     resource_class = EmailResource
     list_display = ('email', 'colaborador', 'ativo')
     list_filter = ('ativo',)
-    actions = ['desativar_emails']
-    inlines = [HistoricoEmailInline] 
+    search_fields = ('email',)
 
-    @admin.action(description="Desativar e-mails selecionados")
-    def desativar_emails(self, request, queryset):
-        queryset.update(ativo=False)
-    def get_export_formats(self):
-            """Garante que XLSX seja incluído na lista de formatos de exportação"""
-            formats = super().get_export_formats()
-            if XLSX not in formats:  # Evita adicionar duplicado
-                formats.append(XLSX)
-            return formats
-    
 @admin.register(HistoricoEmail)
 class HistoricoEmailAdmin(ExportMixin, admin.ModelAdmin):
     resource_class = HistoricoEmailResource
     list_display = ('email', 'colaborador', 'data_inicio', 'data_fim')
     list_filter = ('email', 'colaborador')
     search_fields = ('email__email', 'colaborador__nome')
-    
-admin.site.register(Filial)
-admin.site.register(Colaborador, ColaboradorAdmin)
-admin.site.register(Sistema, SistemaAdmin)
-admin.site.register(Email, EmailAdmin)
-admin.site.register(HistoricoEmail, HistoricoEmailAdmin)
+
+@admin.register(Maquina)
+class MaquinaAdmin(ExportMixin, SomenteSuperuserDeleteMixin, admin.ModelAdmin):
+    resource_class = MaquinaResource
+    list_display = ('nome', 'processador', 'memoria')  
+    list_filter = ('processador', 'memoria')
+    search_fields = ('nome', 'endereco_mac', 'ip')
+
+@admin.register(Equipamento)
+class EquipamentoAdmin(ExportMixin, admin.ModelAdmin):
+    resource_class = EquipamentoResource
+    list_display = ('tipo', 'descricao')  
+    search_fields = ('tipo', 'descricao')
+
+@admin.register(Inventario)
+class InventarioAdmin(ExportMixin, SomenteSuperuserDeleteMixin, admin.ModelAdmin):
+    resource_class = InventarioResource
+    list_display = ('nome', 'numero_serie', 'filial', 'colaborador', 'tipo_item', 'ativo', 'setor', 'funcionando')
+    list_filter = ('ativo', 'filial', 'funcionando', 'setor')
+    search_fields = ('nome', 'numero_serie')
+
+    def tipo_item(self, obj):
+        if obj.maquina:
+            return "Máquina"
+        elif obj.equipamento:
+            return "Equipamento"
+        return "Não definido"
+    tipo_item.short_description = "Tipo do Item"
